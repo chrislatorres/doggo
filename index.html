@@ -1,0 +1,428 @@
+<!doctype html>
+<html>
+<head>
+<style>
+body {
+  margin: 0;
+}
+#canvas {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+/* .buttons {
+  display: flex;
+  position: absolute;
+  right: 30px;
+  bottom: 30px;
+} */
+</style>
+</head>
+<body>
+<canvas id=canvas></canvas>
+<!-- <div class=buttons>
+  <input type=button id=enter-vr-button value="Enter XR">
+</div> -->
+<script type=module>
+import * as THREE from 'https://raw.githack.com/mrdoob/three.js/dev/build/three.module.js';
+window.THREE = THREE;
+</script>
+<script type=module>
+import {GLTFLoader} from 'https://raw.githack.com/mrdoob/three.js/dev/examples/jsm/loaders/GLTFLoader.js';
+import {BufferGeometryUtils} from './BufferGeometryUtils.js';
+
+const quaternion180 = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1))
+  .premultiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1)))
+  .premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI*0.1));
+const bagBox = new THREE.Box3(
+  new THREE.Vector3(-0.1/2, -0.1/2, -0.1/2),
+  new THREE.Vector3(0.1/2, 0.1/2, 0.1/2)
+);
+
+function parseQuery(queryString) {
+  var query = {};
+  var pairs = (queryString[0] === '?' ? queryString.substr(1) : queryString).split('&');
+  for (var i = 0; i < pairs.length; i++) {
+    var pair = pairs[i].split('=');
+    query[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || '');
+  }
+  return query;
+}
+const q = parseQuery(window.location.search);
+
+const canvas = document.getElementById('canvas');
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.sortObjects = false;
+renderer.physicallyCorrectLights = true;
+renderer.xr.enabled = true;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 1, 2);
+
+const ambientLight = new THREE.AmbientLight(0xFFFFFF);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 3);
+scene.add(directionalLight);
+
+const directionalLight2 = new THREE.DirectionalLight(0xFFFFFF, 3);
+scene.add(directionalLight2);
+
+const cubeMesh = (() => {
+  const geometry = new THREE.BoxBufferGeometry(0.1, 0.1, 0.1);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x42a5f5,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return mesh;
+})();
+cubeMesh.position.set(0, 1, 0);
+cubeMesh.rotation.order = 'YXZ';
+scene.add(cubeMesh);
+
+const teleportGeometry = new THREE.TorusBufferGeometry(0.5, 0.15, 3, 5)
+  .applyMatrix4(new THREE.Matrix4().makeRotationX(-(Math.PI / 2)))
+  .applyMatrix4(new THREE.Matrix4().makeRotationY((1 / 20) * (Math.PI * 2)));
+const teleportMaterial = new THREE.MeshBasicMaterial({
+  color: 0x44c2ff,
+});
+const _makeTeleportMesh = () => {
+  const geometry = teleportGeometry;
+  const material = teleportMaterial;
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.visible = false;
+  mesh.frustumCulled = false;
+  return mesh;
+};
+const teleportMesh = _makeTeleportMesh();
+scene.add(teleportMesh);
+
+let shipModel = null;
+const grabTargetNames = [
+  'Sword',
+  'Shield',
+  'Rifle',
+  'Grenade',
+];
+let grabTargets = [];
+const shipHeight = 100;
+new GLTFLoader().load('ship.glb', o => {
+  o = o.scene;
+  o.position.y = shipHeight;
+  scene.add(o);
+
+  shipModel = o;
+  shipModel.updateMatrixWorld();
+  shipModel.traverse(o => {
+    if (grabTargetNames.includes(o.name)) {
+      o.matrix.copy(o.matrixWorld).decompose(o.position, o.quaternion, o.scale);
+      grabTargets.push(o);
+    }
+  });
+  grabTargets.forEach(o => {
+    o.frustumCulled = false;
+    scene.add(o);
+  });
+}, xhr => {}, console.warn);
+
+const _makePointerMesh = () => {
+  const targetGeometry = BufferGeometryUtils.mergeBufferGeometries([
+    new THREE.BoxBufferGeometry(0.03, 0.2, 0.03)
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0, -0.1, 0)),
+    new THREE.BoxBufferGeometry(0.03, 0.2, 0.03)
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 1))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0, 0, 0.1)),
+    new THREE.BoxBufferGeometry(0.03, 0.2, 0.03)
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(1, 0, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0.1, 0, 0)),
+  ]);
+  const geometry = BufferGeometryUtils.mergeBufferGeometries([
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(-0.5, 0.5, -0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, -1, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(-0.5, -0.5, -0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(-0.5, 0.5, 0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0.5, 0.5, -0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0.5, 0.5, 0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1))))
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, -1, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(-0.5, -0.5, 0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, -1, 0))))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0.5, -0.5, -0.5)),
+    targetGeometry.clone()
+      .applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(-1, 1, 0).normalize(), new THREE.Vector3(1, -1, 0).normalize())))
+      .applyMatrix4(new THREE.Matrix4().makeTranslation(0.5, -0.5, 0.5)),
+  ]).applyMatrix4(new THREE.Matrix4().makeScale(0.09, 0.09, 0.09));
+  const targetVsh = `
+    uniform vec3 worldPos;
+    varying vec2 vUv;
+    void main() {
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position + worldPos, 1.);
+    }
+  `;
+  const targetFsh = `
+    uniform float uHighlight;
+    uniform float uTime;
+    void main() {
+      vec3 c = vec3(min(pow(uTime, 0.5), 0.9));
+      c += uHighlight * vec3(${new THREE.Color(0x42a5f5).toArray().map(n => n.toFixed(8)).join(',')});
+      gl_FragColor = vec4(c, 1.0);
+    }
+  `;
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uHighlight: {
+        type: 'f',
+        value: 0,
+      },
+      uTime: {
+        type: 'f',
+        value: 0,
+      },
+    },
+    vertexShader: targetVsh,
+    fragmentShader: targetFsh,
+    // transparent: true,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  // mesh.visible = false;
+  return mesh;
+};
+const bag = new THREE.Object3D();
+scene.add(bag);
+const bagMeshes = [];
+const _addPointerMesh = (p, q) => {
+  const pointerMesh = _makePointerMesh();
+  pointerMesh.position.copy(p);
+  pointerMesh.quaternion.copy(q);
+  bag.add(pointerMesh);
+  
+  bagMeshes.push(pointerMesh);
+};
+_addPointerMesh(new THREE.Vector3(-0.1, 0, -0.05), new THREE.Quaternion());
+_addPointerMesh(new THREE.Vector3(-0.2, 0, -0.05), new THREE.Quaternion());
+_addPointerMesh(new THREE.Vector3(0.1, 0, -0.05), new THREE.Quaternion());
+_addPointerMesh(new THREE.Vector3(0.2, 0, -0.05), new THREE.Quaternion());
+
+const lastGrippeds = [false, false];
+const grabbedObjects = [null, null];
+let resetted = false;
+function animate(time, frame) {
+  const f = (Date.now()%2000)/2000 * Math.PI*2;
+  cubeMesh.rotation.x = f;
+  cubeMesh.rotation.y = f;
+  cubeMesh.rotation.z = f;
+
+  const session = renderer.xr.getSession();
+  if (session) {
+    const vrCameras = renderer.xr.getCamera(camera).cameras;
+    const vrCamera = vrCameras[0];
+    vrCamera.matrixWorld.decompose(vrCamera.position, vrCamera.quaternion, vrCamera.scale);
+    bag.position.copy(vrCamera.position).add(new THREE.Vector3(0, -0.5, 0));
+    const euler = new THREE.Euler().setFromQuaternion(vrCamera.quaternion, 'YXZ');
+    euler.x = 0;
+    euler.z = 0;
+    bag.quaternion.setFromEuler(euler);
+    bag.updateMatrixWorld();
+  
+    bagMeshes.forEach(bagMesh => {
+      bagMesh.material.uniforms.uHighlight.value = 0;
+    });
+  
+    for (let i = 0; i < session.inputSources.length; i++) {
+      const inputSource = session.inputSources[i];
+      const {handedness, gamepad} = inputSource;
+      const targetRayPose = frame.getPose(inputSource.targetRaySpace, renderer.xr.getReferenceSpace());
+      const gripPose = frame.getPose(inputSource.gripSpace, renderer.xr.getReferenceSpace());
+      if (gamepad && targetRayPose && gripPose) {
+        const {buttons, axes} = gamepad;
+        const matrix = new THREE.Matrix4()
+          .fromArray(gripPose.transform.matrix);
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        matrix.decompose(position, quaternion, scale);
+        quaternion.multiply(quaternion180);
+        
+        let hoveredBagMesh = null;
+        for (let i = 0; i < bagMeshes.length; i++) {
+          const bagMesh = bagMeshes[i];
+          const p = position.clone().applyMatrix4(new THREE.Matrix4().getInverse(bagMesh.matrixWorld));
+          if (bagBox.containsPoint(p)) {
+            bagMesh.material.uniforms.uHighlight.value = 1;
+            hoveredBagMesh = bagMesh;
+            break;
+          }
+        }
+        
+        if (handedness === 'right') {
+          const [x, y] = axes;
+
+          if (resetted && !teleportMesh.visible && y > 0.5) {
+            // console.log('switch 1', y);
+            s.send(JSON.stringify({
+              method: 'setSceneAppLocomotionEnabled',
+              data: false,
+            }));
+
+            teleportMesh.visible = true;
+            resetted = false;
+          }
+          if (y === 0) {
+            resetted = true;
+          }
+          // console.log('got buttons', Array.from(buttons).map(b => b.pressed));
+          if (teleportMesh.visible) {
+            const {targetRay} = inputSource;
+            teleportMesh.matrix
+              .fromArray(targetRayPose.transform.matrix)
+              .decompose(teleportMesh.position, teleportMesh.quaternion, teleportMesh.scale);
+            teleportMesh.position.add(new THREE.Vector3(0, 0, -3).applyQuaternion(teleportMesh.quaternion));
+          }
+        }
+        const index = handedness === 'right' ? 1 : 0;
+        const gripped = buttons[1].pressed;
+        const lastGripped = lastGrippeds[index];
+        if (gripped && !lastGripped) {
+          const distanceMap = grabTargets.map(object => {
+            return {
+              object,
+              distance: object.getWorldPosition(new THREE.Vector3()).distanceTo(position),
+            };
+          }).sort((a, b) => a.distance - b.distance);
+          if (distanceMap.length > 0) {
+            const grabbedObject = distanceMap[0].object;
+            scene.add(grabbedObject);
+            grabbedObject.scale.set(1, 1, 1);
+            grabbedObjects[index] = grabbedObject;
+          }
+        } else if (lastGripped && !gripped) {
+          const grabbedObject = grabbedObjects[index];
+          if (grabbedObject) {
+            if (hoveredBagMesh) {
+              hoveredBagMesh.add(grabbedObject);
+              grabbedObject.position.set(0, 0, 0);
+              grabbedObject.quaternion.set(0, 0, 0, 1);
+              grabbedObject.scale.set(0.1, 0.1, 0.1);
+            }
+            grabbedObjects[index] = null;
+          }
+        }
+        lastGrippeds[index] = gripped;
+
+        const grabbedObject = grabbedObjects[index];
+        if (grabbedObject) {
+          grabbedObject.position.copy(position);
+          grabbedObject.quaternion.copy(quaternion);
+        }
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(animate);
+
+let currentSession = null;
+function onSessionStarted(session) {
+  session.addEventListener('end', onSessionEnded);
+
+  renderer.xr.setSession(session);
+
+  currentSession = session;
+}
+function onSessionEnded() {
+  currentSession.removeEventListener('end', onSessionEnded);
+
+  currentSession = null;
+}
+
+const s = new WebSocket('ws://localhost:48081/');
+if (s) {
+  s.onopen = () => {
+    s.onmessage = e => {
+      const j = JSON.parse(e.data);
+      const {method} = j;
+      switch (method) {
+        case 'locomotionInput': {
+          const {data} = j;
+          const leftY = data[1];
+          const rightY = data[11];
+          // console.log('got locomotion input', teleportMesh.visible, y);
+
+          if (resetted && teleportMesh.visible) {
+            if (leftY > 0.5) {
+              s.send(JSON.stringify({
+                method: 'setChaperoneTransform',
+                data: new THREE.Matrix4().makeTranslation(0, shipHeight + 0.5, 0).toArray(),
+              }));
+              resetted = false;
+            } else if (leftY < -0.5) {
+              s.send(JSON.stringify({
+                method: 'setChaperoneTransform',
+                data: new THREE.Matrix4().makeTranslation(0, 0.5, 0).toArray(),
+              }));
+              resetted = false;
+            }
+            if (rightY < -0.5) {
+              // console.log('switch 2', y);
+              s.send(JSON.stringify({
+                method: 'setSceneAppLocomotionEnabled',
+                data: true,
+              }));
+
+              teleportMesh.visible = false;
+              resetted = false;
+            }
+            if (rightY > 0.5) {
+              s.send(JSON.stringify({
+                method: 'setChaperoneTransform',
+                data: new THREE.Matrix4().makeTranslation(teleportMesh.position.x, teleportMesh.position.y, teleportMesh.position.z).toArray(),
+              }));
+              resetted = false;
+            }
+          }
+          if (rightY === 0) {
+            resetted = true;
+          }
+
+          break;
+        }
+      }
+    };
+  };
+}
+
+navigator.xr.requestSession('immersive-vr', {
+  optionalFeatures: [
+    'local-floor',
+    'bounded-floor',
+  ],
+}).then(onSessionStarted);
+
+</script>
+</body>
+</html>
