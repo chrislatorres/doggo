@@ -96,15 +96,11 @@ scene.add(teleportMesh);
 let model = null;
 let mixer = null;
 new GLTFLoader().load('wolf.glb', o => {
-  console.log(o);
-
   mixer = new THREE.AnimationMixer(o.scene);
   mixer.actions = o.animations.map(animation => mixer.clipAction(animation));
   mixer.actions[0].play();
   mixer.actions[1].play();
   mixer.actions[1].weight = 0;
-
-  console.log(mixer);
 
   o = o.scene;
   scene.add(o);
