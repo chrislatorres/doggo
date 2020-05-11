@@ -1,6 +1,9 @@
-name: Build XRPackage
-# This workflow is triggered on pushes to the repository.
-on: [push]
+name: Release XRPackage
+
+on:
+  create:
+    tags:
+      - v*
 
 jobs:
   build:
