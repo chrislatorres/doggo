@@ -20,4 +20,4 @@ jobs:
         id: build
       # This step prints an output (time) from the previous step's action.
       - name: Echo the output destination file
-        run: echo 'The time was ${{ steps.build.outputs.dst }}.'
+        run: echo 'The output file is ${{ steps.build.outputs.dst }}'
