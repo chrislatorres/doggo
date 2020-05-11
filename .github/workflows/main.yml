@@ -26,7 +26,6 @@ jobs:
       - name: Upload release artifact
         uses: Roang-zero1/github-upload-release-artifacts-action@master
         with:
-          args:
-          - a.wbn
+          args: ${{ steps.build.outputs.dst }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
