@@ -1,7 +1,7 @@
 {
-  "name": "exokit-multiplayer",
-  "version": "0.0.1",
-  "description": "Exokit Multiplayer",
+  "name": "doggo",
+  "version": "0.0.0",
+  "description": "WebXR Doggo",
   "main": "index.js",
   "dependencies": {
     "express": "^4.17.1"
