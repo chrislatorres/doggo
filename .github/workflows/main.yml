@@ -11,7 +11,7 @@ jobs:
     steps:
       # This step uses GitHub's hello-world-javascript-action: https://github.com/actions/hello-world-javascript-action
       - name: Hello world
-        uses: webaverse/xrpackage-build-action
+        uses: webaverse/xrpackage-build-action@0.0.1
         with:
           src: '.'
           dst: 'a.wbn'
