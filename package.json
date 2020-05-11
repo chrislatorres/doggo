@@ -1,6 +1,6 @@
 {
   "name": "doggo",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "WebXR Doggo",
   "main": "index.js",
   "dependencies": {
