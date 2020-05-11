@@ -16,4 +16,4 @@ jobs:
           src: '.'
           dst: 'a.wbn'
       - name: Echo build result
-        run: echo 'The output file is ${{ steps.build.outputs.dst }}'
+        run: echo 'The output file is ${{ steps.build.outputs.dst }}; the release name is ${{ steps.build.outputs.name }}'
