@@ -9,8 +9,10 @@ jobs:
     # This job runs on Linux
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
       # This step uses GitHub's hello-world-javascript-action: https://github.com/actions/hello-world-javascript-action
-      - name: Build
+      - name: Build package
         uses: webaverse/xrpackage-build-action@v0.0.3
         with:
           src: '.'
