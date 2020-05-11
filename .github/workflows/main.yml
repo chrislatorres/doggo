@@ -4,20 +4,38 @@ on: [push]
 
 jobs:
   build:
-    # Job name is Greeting
     name: Build
-    # This job runs on Linux
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v2
-      # This step uses GitHub's hello-world-javascript-action: https://github.com/actions/hello-world-javascript-action
       - name: Build package
+        id: build
         uses: webaverse/xrpackage-build-action@v0.0.8
         with:
           src: '.'
           dst: 'a.wbn'
-        id: build
-      # This step prints an output (time) from the previous step's action.
-      - name: Echo the output destination file
+      - name: Echo build result
         run: echo 'The output file is ${{ steps.build.outputs.dst }}'
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ steps.build.outputs.name }}
+          body: |
+            XRPackage build
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.build.outputs.dst }}
+          asset_name: ${{ steps.build.outputs.dst }}
+          asset_content_type: application/webbundle
