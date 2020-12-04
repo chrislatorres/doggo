@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+<meta name="monetization" content="$ilp.uphold.com/3qf4fNgde3fD">
 <style>
 body {
   margin: 0;
@@ -20,6 +21,25 @@ body {
   bottom: 30px;
 } */
 </style>
+  <script>
+    let total = 0
+    let scale
+
+    if (document.monetization) {
+      document.monetization.addEventListener('monetizationprogress', ev => {
+        // initialize currency and scale on first progress event
+        if (total === 0) {
+          scale = ev.detail.assetScale
+          console.log("currency: ", ev.detail.assetCode);
+        }
+
+        total += Number(ev.detail.amount)
+
+        const formatted = (total * Math.pow(10, -scale)).toFixed(scale)
+        console.log("ammount: ", formatted);
+      })
+    }
+  </script>
 </head>
 <body>
 <canvas id=canvas></canvas>
